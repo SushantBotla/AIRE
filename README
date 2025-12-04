@@ -1,0 +1,66 @@
+# AI-Powered Real Estate Assistant
+
+An intelligent real estate assistant designed to help users explore and understand housing markets.  
+Developed in Figma, integrated with APIs and databases to store, access, and analyze property data in real time.
+
+---
+
+## Overview
+
+The AI Real Estate Assistant transforms how people access and trust information in real estate.  
+It allows users to ask natural questions about homes, locations, and property values, and provides accurate, data-driven responses instantly.
+
+---
+
+## Features
+
+- AI Chatbot Interface – Responds naturally to user questions about homes, locations, and pricing trends.  
+- Smart Data Access – Connects to APIs and databases to fetch up-to-date real estate information.  
+- Property Insights – Provides comparisons, value trends, and personalized recommendations.  
+- Designed in Figma – Focused on user experience, with clean visuals and intuitive navigation.  
+
+---
+
+## Tech Stack
+
+- Design: Figma  
+- Backend: API integrations for housing data and analytics  
+- Database: Structured storage for property and user data  
+- AI/Logic Layer: Natural language understanding for intelligent responses  
+
+---
+
+## How It Works
+
+1. The user opens the assistant and types a question (for example, "What’s the average home price in Austin?").  
+2. The chatbot processes the query using natural language understanding.  
+3. Data is retrieved from APIs and databases containing real-time housing data.  
+4. The assistant delivers a clear, well-informed answer, often with visual or numerical insights.
+
+---
+
+## Example Interaction
+
+User: "How much is a 3-bedroom home worth in Seattle?"  
+Assistant: "The average price for a 3-bedroom home in Seattle is around $785,000, based on current market data. Would you like to see value trends over the past year?"
+
+---
+
+## Data Management
+
+- Property data is securely stored and accessed via database connections.  
+- API calls ensure the chatbot always uses the most accurate and recent market information.  
+
+---
+
+## Contributing
+
+This project is in development. Contributions, ideas, and feedback are welcome.  
+Feel free to open an issue or submit a pull request.
+
+---
+
+## Authors
+
+Sushant Botla & Kaartik Virigineni 
+HACKUTD 2025, Lost In Pages
