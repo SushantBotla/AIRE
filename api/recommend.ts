@@ -25,13 +25,14 @@ export function recommend(query: string, excludeIds: string[] = []) {
   }));
   return {message:properties.length?"Here are matches from the AIRE sample dataset (not live listings).":"No more listings to show.",properties};
 }
+function send(res:VercelResponse,status:number,payload:unknown){res.statusCode=status;res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload));}
 export default function handler(req:VercelRequest,res:VercelResponse){
   res.setHeader("Cache-Control","no-store");
-  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});
+  if(req.method!=="POST")return send(res,405,{error:"Method not allowed"});
   let body:unknown=req.body;
-  if(typeof body==="string"){try{body=JSON.parse(body)}catch{return res.status(400).json({error:"Malformed JSON"})}}
-  if(!body || typeof body!=="object")return res.status(400).json({error:"Invalid body"});
+  if(typeof body==="string"){try{body=JSON.parse(body)}catch{return send(res,400,{error:"Malformed JSON"})}}
+  if(!body || typeof body!=="object")return send(res,400,{error:"Invalid body"});
   const input=body as Record<string,unknown>;
-  if(typeof input.query!=="string" || input.query.length>500 || !Array.isArray(input.excludeIds) || input.excludeIds.length>100 || !input.excludeIds.every(x=>typeof x==="string"))return res.status(400).json({error:"Invalid query or exclusions"});
-  return res.status(200).json(recommend(input.query,input.excludeIds));
+  if(typeof input.query!=="string" || input.query.length>500 || !Array.isArray(input.excludeIds) || input.excludeIds.length>100 || !input.excludeIds.every(x=>typeof x==="string"))return send(res,400,{error:"Invalid query or exclusions"});
+  return send(res,200,recommend(input.query,input.excludeIds));
 }
