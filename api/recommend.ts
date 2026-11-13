@@ -1,3 +1,4 @@
+import { aiRank } from "./ai";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import listings from "../listings.json";
 type Raw = (typeof listings)[number];
@@ -26,7 +27,7 @@ export function recommend(query: string, excludeIds: string[] = []) {
   return {message:properties.length?"Here are matches from the AIRE sample dataset (not live listings).":"No more listings to show.",properties};
 }
 function send(res:VercelResponse,status:number,payload:unknown){res.statusCode=status;res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload));}
-export default function handler(req:VercelRequest,res:VercelResponse){
+export default async function handler(req:VercelRequest,res:VercelResponse){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="POST")return send(res,405,{error:"Method not allowed"});
   let body:unknown=req.body;
@@ -34,5 +35,15 @@ export default function handler(req:VercelRequest,res:VercelResponse){
   if(!body || typeof body!=="object")return send(res,400,{error:"Invalid body"});
   const input=body as Record<string,unknown>;
   if(typeof input.query!=="string" || input.query.length>500 || !Array.isArray(input.excludeIds) || input.excludeIds.length>100 || !input.excludeIds.every(x=>typeof x==="string"))return send(res,400,{error:"Invalid query or exclusions"});
-  return send(res,200,recommend(input.query,input.excludeIds));
+  const result=recommend(input.query,input.excludeIds);
+  try {
+    const ids=await aiRank(input.query,input.excludeIds);
+    if(ids?.length){
+      const all=recommend(input.query,[]);
+      const items=new Map([...all.properties,...catalog.map(p=>({id:String(p.id),url:String(p.url),price:String(p.price??"N/A"),bed:String(p.beds??"N/A"),bath:String(p.baths??"N/A"),address:String(p.fullAddress),city:String(p.city),state:String(p.state),zip:String(p.zipcode),mainImg:String(p.image??""),rating:"AI match",explanation:"Selected from the sample catalog by Gemini. Verify the listing with its provider."}))].map(p=>[p.id,p]));
+      const chosen=ids.map(id=>items.get(id)).filter((p):p is NonNullable<typeof p>=>Boolean(p));
+      if(chosen.length)return send(res,200,{message:"Here are AI-selected matches from the sample dataset (not live listings).",properties:chosen});
+    }
+  } catch(error) { console.error("AI ranking unavailable; using local matching",error instanceof Error?error.message:"unknown error"); }
+  return send(res,200,result);
 }
