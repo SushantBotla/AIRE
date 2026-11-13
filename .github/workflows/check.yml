@@ -1,0 +1,28 @@
+name: Validate AIRE
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install
+      - name: Test recommendation logic
+        run: npm test
+      - name: Typecheck and build
+        run: npm run build
+      - name: Local API smoke test
+        run: |
+          npm run dev:api > /tmp/aire-api.log 2>&1 &
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl --fail --silent --output /tmp/aire-response.json -X POST http://127.0.0.1:3001/api/recommend -H 'Content-Type: application/json' -d '{"query":"3 bed Dallas home under $400k","excludeIds":[]}'; then break; fi
+            sleep 1
+          done
+          node -e 'const r=require("/tmp/aire-response.json"); if (!Array.isArray(r.properties) || r.properties.length===0) process.exit(1); console.log("API returned",r.properties.length,"properties")'
