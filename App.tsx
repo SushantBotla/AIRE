@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { GoogleGenAI } from "@google/genai";
-import { createClient } from "@supabase/supabase-js";
 import { ChatMessage } from "./components/ChatMessage";
 import { PropertyCard } from "./components/PropertyCard";
 import { PropertyDetailPage } from "./components/PropertyDetailPage";
 import { Send, Loader2, MessageCircle, X } from "lucide-react";
-import { Progress } from "./components/ui/progress";
+import { Progress } from "./components/Progress";
+import rawListings from "./listings.json";
 import { motion } from "motion/react";
 
 interface Property {
@@ -44,34 +43,39 @@ interface Listing {
   otherImgs: string[];
 }
 
-const supabaseUrl = 'https://abheupvblxijzvoibmjn.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiaGV1cHZibHhpanp2b2libWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2NDE2OTIsImV4cCI6MjA3ODIxNzY5Mn0.EIROMlSeG9gu1_jfmN4GLekL1px0a9gd6yd640OPqCA';
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-const ai = new GoogleGenAI({ apiKey: "AIzaSyDc-sdnVeqVMBMNNjPz71H3-n1q_YUuJ8Y" });
-
-// Fetch listings from Supabase and parse into simple objects
-async function getListings(): Promise<Listing[]> {
-  const { data, error } = await supabase.from("listings").select("*");
-  if (error) {
-    console.error("Supabase error:", error);
-    return [];
-  }
-
-  return data.map((l: any) => ({
-    id: l.id,
-    url: l.url,
-    price: l.price?.toString() || "N/A",
-    bed: l.beds?.toString() || "N/A",
-    bath: l.baths?.toString() || "N/A",
-    address: l.fullAddress || "N/A",
-    city: l.city || "N/A",
-    state: l.state || "N/A",
-    street: l.street || "N/A",
-    zip: l.zipcode || "N/A",
-    mainImg: l.image || "N/A",
-    otherImgs: l.photos || []
+// Snapshot data makes AIRE independently reviewable without a private database.
+// The original hackathon version used Supabase; see README for architecture notes.
+function getListings(): Listing[] {
+  return (rawListings as Array<Record<string, unknown>>).map((l) => ({
+    id: String(l.id ?? ""),
+    url: String(l.url ?? ""),
+    price: String(l.price ?? "N/A"),
+    bed: String(l.beds ?? "N/A"),
+    bath: String(l.baths ?? "N/A"),
+    address: String(l.fullAddress ?? "N/A"),
+    city: String(l.city ?? "N/A"),
+    state: String(l.state ?? "N/A"),
+    street: String(l.street ?? "N/A"),
+    zip: String(l.zipcode ?? "N/A"),
+    mainImg: String(l.image ?? ""),
+    otherImgs: typeof l.photos === "string" ? l.photos.split(",").map(x => x.trim()).filter(Boolean) : [],
   }));
+}
+type Recommendation = { message: string; properties: Property[] };
+async function requestRecommendations(query: string, excludeIds: string[] = []): Promise<Recommendation> {
+  const response = await fetch("/api/recommend", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, excludeIds }),
+  });
+  if (!response.ok) throw new Error(`Recommendation service returned ${response.status}`);
+  const data: unknown = await response.json();
+  if (!data || typeof data !== "object" || !("message" in data) || !("properties" in data)) {
+    throw new Error("Invalid recommendation response");
+  }
+  const result = data as Recommendation;
+  if (typeof result.message !== "string" || !Array.isArray(result.properties)) throw new Error("Invalid recommendation shape");
+  return result;
 }
 
 export default function App() {
@@ -81,7 +85,7 @@ export default function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [featuredProperties, setFeaturedProperties] = useState<Listing[]>([]);
+  const [featuredProperties, setFeaturedProperties] = useState<Property[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -101,161 +105,34 @@ export default function App() {
     }
   }, [isChatOpen]);
 
-  // Fetch 3 random properties for the home page
+  // Show three sample properties on the home page
   useEffect(() => {
     const fetchFeaturedProperties = async () => {
-      const listings = await getListings();
-      // Get 3 random properties
-      const shuffled = [...listings].sort(() => 0.5 - Math.random());
+      const listings = getListings();
+      // Show a deterministic preview
+      const shuffled = [...listings].sort((a, b) => a.id.localeCompare(b.id));
       setFeaturedProperties(shuffled.slice(0, 3));
     };
     fetchFeaturedProperties();
   }, []);
 
   const handleSendMessage = async () => {
-    if (!input.trim() || isLoading) return;
-
-    const userMessage = input.trim();
+    const query = input.trim();
+    if (!query || isLoading) return;
     setInput("");
     setIsLoading(true);
-    setLoadingProgress(0);
-
-    // Add user message to conversation
-    const newConversation: Message[] = [
-      ...conversation,
-      { role: "user", content: userMessage },
-    ];
-    setConversation(newConversation);
-
-    // Simulate progress bar
-    const progressInterval = setInterval(() => {
-      setLoadingProgress((prev) => {
-        if (prev >= 90) return prev;
-        return prev + Math.random() * 15;
-      });
-    }, 300);
-
+    setLoadingProgress(25);
+    const nextConversation: Message[] = [...conversation, { role: "user", content: query }];
+    setConversation(nextConversation);
     try {
-      // Fetch listings from Supabase
-      const listings = await getListings();
-      
-      if (!listings.length) {
-        throw new Error("No listings available from database.");
-      }
-
-      // Generate AI response with real estate context using the original prompt structure
-      const prompt = `You are a real estate expert. Here are the house listings: ${JSON.stringify(listings)}
-
-Based on the user description: "${userMessage}", find the best 3 matching properties.
-
-You MUST respond with VALID JSON in this exact format. DO NOT add any text before or after the JSON:
-{
-  "message": "A friendly message to the user",
-  "properties": [
-    {
-      "id": "property id from listings",
-      "url": "property url",
-      "price": "property price",
-      "bed": "number of beds",
-      "bath": "number of baths",
-      "address": "full street address",
-      "city": "city",
-      "state": "state",
-      "zip": "zip code",
-      "mainImg": "main image url",
-      "rating": "Excellent, Good, or Bad",
-      "explanation": "One short sentence explaining the rating"
-    }
-  ]
-}
-
-CRITICAL JSON FORMATTING RULES:
-- All property values MUST be strings enclosed in double quotes
-- Do NOT use single quotes anywhere
-- Do NOT add trailing commas after the last item in arrays or objects
-- Ensure ALL strings are properly closed with double quotes
-- Escape any quotes inside strings with backslash
-- Do NOT include any markdown formatting like \`\`\`json
-- Return ONLY the JSON object, no other text before or after
-- Each property object must have ALL fields listed above as strings
-
-IMPORTANT RULES:
-- If the user asks about real estate, return matching properties in the JSON format above
-- ONLY return the top 3 best matching properties
-- Always include a rating (Excellent, Good, or Bad) and explanation for each property
-- If the user enters something unrelated to real estate, respond with {"message": "I can only help with real estate questions. Please ask about properties.", "properties": []}
-- If the user asks about a location you don't have, respond with {"message": "I don't have listings for that location yet.", "properties": []}`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      });
-
-      let aiResponse = response.text;
-      
-      // Clean up the response to extract JSON
-      // Remove markdown code blocks and backticks
-      aiResponse = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-      
-      // Try to extract JSON object if there's extra text
-      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        aiResponse = jsonMatch[0];
-      }
-
-      // Complete progress
+      const result = await requestRecommendations(query);
       setLoadingProgress(100);
-
-      // Parse the AI response
-      try {
-        const parsedResponse = JSON.parse(aiResponse);
-        
-        // Validate the response structure
-        if (typeof parsedResponse !== 'object') {
-          throw new Error('Response is not a valid object');
-        }
-        
-        // Update featured properties if AI returned 3 properties
-        if (parsedResponse.properties && parsedResponse.properties.length === 3) {
-          setFeaturedProperties(parsedResponse.properties);
-        }
-        
-        // Add AI response to conversation with properties
-        setConversation([
-          ...newConversation,
-          { 
-            role: "assistant", 
-            content: parsedResponse.message || "",
-            properties: parsedResponse.properties || []
-          },
-        ]);
-      } catch (parseError) {
-        console.error("Error parsing AI response:", parseError);
-        console.error("Raw AI response:", aiResponse);
-        
-        // Show detailed error message to user
-        const errorMessage = `I apologize, but I encountered an error processing the response. 
-
-Error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}
-
-Please try rephrasing your question or ask about specific property features like location, price range, or number of bedrooms.`;
-        
-        setConversation([
-          ...newConversation,
-          { role: "assistant", content: errorMessage },
-        ]);
-      }
+      if (result.properties.length) setFeaturedProperties(result.properties);
+      setConversation([...nextConversation, { role: "assistant", content: result.message, properties: result.properties }]);
     } catch (error) {
-      console.error("Error generating response:", error);
-      setConversation([
-        ...newConversation,
-        {
-          role: "assistant",
-          content: "Sorry, I encountered an error. Please try again.",
-        },
-      ]);
+      console.error("Recommendation error:", error);
+      setConversation([...nextConversation, { role: "assistant", content: "I couldn't load recommendations. Please try again." }]);
     } finally {
-      clearInterval(progressInterval);
       setIsLoading(false);
       setLoadingProgress(0);
       inputRef.current?.focus();
@@ -271,92 +148,13 @@ Please try rephrasing your question or ask about specific property features like
 
   const handleViewMore = async () => {
     if (isLoadingMore) return;
-
     setIsLoadingMore(true);
-
     try {
-      // Fetch listings from Supabase
-      const listings = await getListings();
-      
-      if (!listings.length) {
-        return;
-      }
-
-      // Generate AI response asking for 3 more properties
-      const prompt = `You are a real estate expert. Here are the house listings: ${JSON.stringify(listings)}
-
-The user wants to see 3 more property recommendations. Find the best 3 matching properties that are different from the ones already shown.
-
-You MUST respond with VALID JSON in this exact format. DO NOT add any text before or after the JSON:
-{
-  "message": "Here are 3 more properties you might like!",
-  "properties": [
-    {
-      "id": "property id from listings",
-      "url": "property url",
-      "price": "property price",
-      "bed": "number of beds",
-      "bath": "number of baths",
-      "address": "full street address",
-      "city": "city",
-      "state": "state",
-      "zip": "zip code",
-      "mainImg": "main image url",
-      "rating": "Excellent, Good, or Bad",
-      "explanation": "One short sentence explaining the rating"
-    }
-  ]
-}
-
-CRITICAL JSON FORMATTING RULES:
-- All property values MUST be strings enclosed in double quotes
-- Do NOT use single quotes anywhere
-- Do NOT add trailing commas after the last item in arrays or objects
-- Ensure ALL strings are properly closed with double quotes
-- Escape any quotes inside strings with backslash
-- Do NOT include any markdown formatting like \`\`\`json
-- Return ONLY the JSON object, no other text before or after
-- Each property object must have ALL fields listed above as strings
-
-IMPORTANT RULES:
-- ONLY return the top 3 best matching properties
-- Always include a rating (Excellent, Good, or Bad) and explanation for each property`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      });
-
-      let aiResponse = response.text;
-      
-      // Clean up the response to extract JSON
-      aiResponse = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-      
-      // Try to extract JSON object if there's extra text
-      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        aiResponse = jsonMatch[0];
-      }
-
-      // Parse the AI response
-      try {
-        const parsedResponse = JSON.parse(aiResponse);
-        
-        // Validate the response structure
-        if (typeof parsedResponse !== 'object') {
-          throw new Error('Response is not a valid object');
-        }
-        
-        // Append new properties to existing ones
-        if (parsedResponse.properties && parsedResponse.properties.length > 0) {
-          setFeaturedProperties((prev) => [...prev, ...parsedResponse.properties]);
-        }
-      } catch (parseError) {
-        console.error("Error parsing AI response:", parseError);
-        console.error("Raw AI response:", aiResponse);
-      }
+      const lastUserQuery = [...conversation].reverse().find(m => m.role === "user")?.content ?? "";
+      const result = await requestRecommendations(lastUserQuery, featuredProperties.map(p => p.id));
+      setFeaturedProperties(prev => [...prev, ...result.properties]);
     } catch (error) {
-      console.error("Error generating more properties:", error);
+      console.error("Unable to fetch more properties:", error);
     } finally {
       setIsLoadingMore(false);
     }
