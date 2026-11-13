@@ -4,7 +4,7 @@
 
 AIRE helps users browse a small collection of Dallas-area real estate listings. Enter natural-language preferences (for example, "3 bed home under $400k") to get up to three matched listing cards. Open a card for its details and a link to the listing provider. Use **View more** to see additional results without duplicates.
 
-> **Data disclosure:** The included `listings.json` is a historical, static sample dataset. It is **not** a live MLS feed; prices, availability, and listing URLs may be outdated. The current reproducible demo uses deterministic ranking and does not make AI model calls. The original HackUTD prototype integrated Gemini and Supabase, but exposing credentials in a browser was unsafe; the old integration has been disabled in this reviewable version.
+> **Data disclosure:** The included `listings.json` is a historical, static sample dataset. It is **not** a live MLS feed; prices, availability, and listing URLs may be outdated. The demo runs without credentials using deterministic ranking. Optionally, configure `GEMINI_API_KEY` on the server to enable Gemini-backed ranking. The original HackUTD prototype used Gemini and Supabase directly; the client-side credential handling has been replaced with a server endpoint.
 
 ## Quick start
 
@@ -17,7 +17,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL reported by Vite (normally http://127.0.0.1:5173). `npm run dev` starts Vite and a local API on port 3001. No API keys or database accounts are needed.
+Open the local URL reported by Vite (normally http://127.0.0.1:5173). `npm run dev` starts Vite and a local API on port 3001. No API keys or database accounts are needed for local demo mode. To enable AI ranking, copy `.env.example` to `.env`, set `GEMINI_API_KEY`, and start the app. Never add `VITE_` to a private key variable.
 
 ```bash
 npm test
@@ -35,14 +35,15 @@ The API validates requests and responds at `POST /api/recommend` with JSON such 
 | `components/ChatMessage.tsx` | Chat messages and inline results |
 | `components/PropertyCard.tsx` | Property preview cards |
 | `components/PropertyDetailPage.tsx` | Property detail overlay and provider link |
-| `api/recommend.ts` | Validated API, deterministic preference ranking, duplicate filtering |
+| `api/recommend.ts` | Validated API, recommendation handling and duplicate filtering |
+| `api/ai.ts` | Optional server-side Gemini ranking (when configured) |
 | `dev-server.ts` | Local API endpoint for Vite development |
 | `listings.json` | Bundled historical listing snapshot |
 | `tests/recommend.test.ts` | Basic matching and exclusion tests |
 
 ## Design and tradeoffs
 
-The initial hackathon build used the Gemini model to interpret preferences and a Supabase table for listing data. This submission-readiness cleanup prioritizes **reproducibility and safe review** by keeping the demo fully functional without external credentials. It deliberately does not claim that its results are real-time, AI-generated, or independent real-estate valuations. The original team created this under hackathon time constraints.
+The initial hackathon build used the Gemini model to interpret preferences and a Supabase table for listing data. This submission-readiness cleanup prioritizes **reproducibility and safe review** by keeping the demo fully functional without external credentials. Its results are not real-time or independent real-estate valuations; results are AI-selected only when a server-side Gemini key is configured. The original team created this under hackathon time constraints.
 
 Potential next steps include a secure server-side LLM ranking adapter, schema validation, reliable data licensing and freshness checks, accessibility improvements, broader test coverage, and mobile layout refinements.
 
